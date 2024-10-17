@@ -1,16 +1,16 @@
-name: "GitHub Notion Issues Automation"
-permissions:
-  issues: read
-on: 
+name: Sync issues to Notion
+
+on:
   issues:
-      types: [opened, edited, deleted, transferred, milestoned, demilestoned, labeled, unlabeled, assigned, unassigned, locked, unlocked, reopened, closed]
+    types: [opened, edited, deleted, closed, reopened]
+  workflow_dispatch:
 jobs:
-  build:
+  sync:
     runs-on: ubuntu-latest
     steps:
       - name: Notion GitHub Issues Automation
-        uses: Sajantoor/Notion-GitHub-Issues-Automation@latest
+        uses: Edit-Mr/GitHub-issue-2-Notion@main
         with:
-          repo: ${{ github.repository }}
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DATABASE: ${{ secrets.NOTION_DATABASE_ID }}
+            repo: ${{ github.repository }}
+            NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+            NOTION_DATABASE: ${{ secrets.NOTION_DATABASE_ID }}
