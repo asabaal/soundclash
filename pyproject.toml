@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "your_package"
+version = "0.0.1"
+description = "This repo hosts my work analyzing the Suno AI Remix Contest for Soundclash by Flosstradamus winners dataset."
+authors = [{name = "Asabaal Horan", email = "asabaal@asabaalventures.org"}]
+license = {file = "LICENSE"}
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "requests>=2.26.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/asabaal/soundclash"
+"Bug Tracker" = "https://github.com/asabaal/soundclash/issues"
+
+[
+tool.setuptools.dynamic
+]
+version = {file = "VERSION"}
