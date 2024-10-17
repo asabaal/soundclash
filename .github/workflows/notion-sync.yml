@@ -1,0 +1,14 @@
+name: "GitHub Notion Issues Automation"
+permissions:
+  issues: read
+on: [issues]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notion GitHub Issues Automation
+        uses: Sajantoor/Notion-GitHub-Issues-Automation@1.0.0
+        with:
+          repo: ${{ github.repository }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE: ${{ secrets.NOTION_DATABASE_ID }}
