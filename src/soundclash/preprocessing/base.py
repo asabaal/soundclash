@@ -1,135 +1,205 @@
 import os
-import re
-import logging
-import glob
 import subprocess
+import pandas as pd
 import json
-import numpy as np
-from pydub import AudioSegment
-from pydub.silence import detect_silence
-from datetime import timedelta
-from typing import List, Tuple
+from typing import List, Dict, Any, Tuple
 
-#TODO document this code in github
+def detect_silences(input_file: str, silence_thresh: float = -30, min_silence_len: float = 1) -> List[Tuple[float, float]]:
+    """
+    Detect silences in an audio file using ffmpeg.
 
-#TODO convert this to a function
-#ffmpeg to split the audio file into chunks
-# ffmpeg -i SoundclashRecordings7.mp3 -f segment -segment_time 10 -c copy chunks_7/chunk_t%03d.mp3
-# and same for the others
+    Parameters
+    ----------
+    input_file : str
+        The path to the input audio file.
+    silence_thresh : float, optional
+        The threshold (in dB) below which the audio is considered silence.
+        Default is -30 dB.
+    min_silence_len : float, optional
+        The minimum length of silence to detect, in seconds. Default is 1 second.
 
-def count_chunks(raw_audio: str, chunks_dir: str = "chunks") -> int:
-    # count the number of chunks in the directory
-    return len(os.listdir(os.path.join(path_of(raw_audio), chunks_dir)))
+    Returns
+    -------
+    List[Tuple[float, float]]
+        A list of tuples containing the start and end times of detected silences.
 
-def path_of(file: str) -> str:
-    return os.path.join(os.getcwd(), file)
+    Notes
+    -----
+    This function uses ffmpeg's silencedetect filter to identify silent periods in the audio.
+    """
+    # Declare variables with type hints
+    command: List[str] = []
+    result: subprocess.CompletedProcess
+    silences: List[Tuple[float, float]] = []
+    start: float
+    end: float
 
-def process_audio_file_in_chunks(directory):
-    # Get a list of all files in the directory
-    chunk_files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.mp3')]
-
-    # Extract numeric values from file names
-    numeric_values = [int(f.split("_")[-1].split(".")[0][1:]) for f in chunk_files]
-
-    # Get the sorted indices based on numeric values
-    sorted_indices = np.argsort(numeric_values)
-
-    # Sort the chunk files based on the sorted indices
-    sorted_chunk_files = [chunk_files[i] for i in sorted_indices]
-
-    return sorted_chunk_files
-
-def find_silences_in_audio(sorted_chunk_files, silence_thresh=-40, min_silence_len=1000):
-    silences = []
-    previous_chunk_end = 0
-    previous_chunk_silence_end = None
-
-    # Process each chunk in sorted order
-    for i, chunk_file in enumerate(sorted_chunk_files):
-        audio_chunk = AudioSegment.from_mp3(chunk_file)
-        chunk_silences = detect_silence(audio_chunk, min_silence_len=min_silence_len, silence_thresh=silence_thresh)
-
-        # Adjust silence positions relative to the original audio
-        adjusted_silences = [(start + previous_chunk_end, end + previous_chunk_end) for start, end in chunk_silences]
-
-        # Check for silence at the start of the chunk
-        if previous_chunk_silence_end is not None and adjusted_silences and adjusted_silences[0][0] == previous_chunk_end:
-            # Merge with the previous chunk's ending silence
-            adjusted_silences[0] = (previous_chunk_silence_end[0], adjusted_silences[0][1])
-            previous_chunk_silence_end = None
-
-        # Check for silence at the end of the chunk
-        if adjusted_silences and adjusted_silences[-1][1] == previous_chunk_end + len(audio_chunk):
-            previous_chunk_silence_end = adjusted_silences.pop()
-
-        silences.extend(adjusted_silences)
-        previous_chunk_end += len(audio_chunk)
-
-    # Add the last chunk's ending silence if it exists
-    if previous_chunk_silence_end is not None:
-        silences.append(previous_chunk_silence_end)
-
-    return silences
-
-
-def generate_ffmpeg_silence_detect_command(input_file):
-    return [
-        "ffmpeg",
-        "-i", input_file,
-        "-af", "silencedetect=noise=-30dB:d=0.5",
-        "-f", "null",
-        "-"
+    # Construct the ffmpeg command
+    command = [
+        'ffmpeg',
+        '-i', input_file,
+        '-af', f'silencedetect=noise={silence_thresh}dB:d={min_silence_len}',
+        '-f', 'null',
+        '-'
     ]
-
-def parse_silence_output(output):
-    silences = []
-    for line in output.split('\n'):
-        if "silence_end" in line:
-            parts = line.split()
-            end = float(parts[4])
-            duration = float(parts[8])
-            start = end - duration
-            silences.append((start, end))
+    
+    # Run the ffmpeg command and capture the output
+    result = subprocess.run(command, capture_output=True, text=True)
+    
+    # Parse the ffmpeg output to extract silence start and end times
+    line: str
+    for line in result.stderr.split('\n'):
+        if 'silence_start' in line:
+            start = float(line.split('silence_start: ')[1])
+            silences.append((start, None))
+        elif 'silence_end' in line:
+            end = float(line.split('silence_end: ')[1].split(' ')[0])
+            if silences and silences[-1][1] is None:
+                silences[-1] = (silences[-1][0], end)
+    
     return silences
-
 
 def get_file_duration(input_file: str) -> float:
-    command = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{input_file}"'
-    result = subprocess.run(command, capture_output=True, text=True, shell=True)
-    return float(result.stdout.strip()) * 1000  # Convert to milliseconds
+    """
+    Get the duration of an audio file in milliseconds.
 
-def generate_split_commands(input_file: str, silences: List[Tuple[int, int]], chunk_dir: str, output_dir: str, min_duration: int = 60000) -> List[str]:
-    commands = []
-    file_duration = get_file_duration(input_file)
+    Parameters
+    ----------
+    input_file : str
+        The path to the input audio file.
+
+    Returns
+    -------
+    float
+        The duration of the audio file in milliseconds.
+    """
+    command: str = f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{input_file}"'
+    result: subprocess.CompletedProcess = subprocess.run(command, capture_output=True, text=True, shell=True)
+    duration: float = float(result.stdout.strip()) * 1000  # Convert to milliseconds
+    return duration
+
+def generate_split_commands(input_file: str, silences: List[Tuple[float, float]], output_dir: str, min_duration: float = 60) -> List[str]:
+    """
+    Generate ffmpeg commands to split an audio file based on detected silences.
+
+    Parameters
+    ----------
+    input_file : str
+        The path to the input audio file.
+    silences : List[Tuple[float, float]]
+        A list of tuples containing the start and end times of detected silences.
+    output_dir : str
+        The directory where the split audio files will be saved.
+    min_duration : float, optional
+        The minimum duration (in seconds) for a split segment. Default is 60 seconds.
+
+    Returns
+    -------
+    List[str]
+        A list of ffmpeg commands to split the audio file.
+    """
+    commands: List[str] = []
+    file_duration: float = get_file_duration(input_file)
     
-    # Handle the first non-silent segment
-    chunk_counter = 0
-    start = 0
+    chunk_start: float = 0
+    chunk_counter: int = 0
+
+    silence_start: float
+    silence_end: float
+
     for silence_start, silence_end in silences:
-        if silence_start - start >= min_duration:
-            output_file = os.path.join(output_dir, f"chunk_{chunk_counter:03d}.mp3")
-            command = f'ffmpeg -i "{input_file}" -ss {start/1000:.3f} -to {silence_start/1000:.3f} -c copy "{output_file}"'
+        if silence_start - chunk_start >= min_duration:
+            output_file: str = os.path.join(output_dir, f"chunk_{chunk_counter:03d}.mp3")
+            command: str = f'ffmpeg -i "{input_file}" -ss {chunk_start:.3f} -to {silence_start:.3f} -c copy "{output_file}"'
             commands.append(command)
             chunk_counter += 1
-        start = silence_end
-    
-    # Handle the last segment (which might be silence)
-    if file_duration - start >= min_duration:
-        output_file = os.path.join(output_dir, f"chunk_{chunk_counter:03d}.mp3")
-        command = f'ffmpeg -i "{input_file}" -ss {start/1000:.3f} -c copy "{output_file}"'
+        
+        chunk_start = silence_end
+
+    # Handle the last segment if it's not silence and meets the minimum duration
+    if file_duration - chunk_start >= min_duration:
+        output_file: str = os.path.join(output_dir, f"chunk_{chunk_counter:03d}.mp3")
+        command: str = f'ffmpeg -i "{input_file}" -ss {chunk_start:.3f} -to {file_duration:.3f} -c copy "{output_file}"'
         commands.append(command)
-    
+
     return commands
 
-def run_ffmpeg_command(command: str):
-    try:
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        stdout, stderr = process.communicate()
-        if process.returncode != 0:
-            logging.error(f"Error executing command: {command}")
-            logging.error(f"stderr: {stderr}")
-        else:
-            logging.info(f"Successfully executed: {command}")
-    except Exception as e:
-        logging.error(f"Exception occurred while executing command: {command}")
-        logging.error(str(e))
+def analyze_audio_chunks(chunk_dir: str) -> pd.DataFrame:
+    """
+    Analyze audio chunks in a given directory using ffmpeg.
+
+    This function goes through each MP3 file in the specified directory,
+    extracts information using ffmpeg, and creates a pandas DataFrame
+    with the results.
+
+    Parameters
+    ----------
+    chunk_dir : str
+        The directory containing the audio chunk files (format: chunk_xxx.mp3).
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame containing information about each audio chunk, including:
+        - chunk_number: The number extracted from the filename
+        - duration: The length of the audio file in seconds
+        - bit_rate: The bit rate of the audio file
+        - sample_rate: The sample rate of the audio file
+        - channels: The number of audio channels
+
+    Raises
+    ------
+    FileNotFoundError
+        If the specified directory does not exist.
+    subprocess.CalledProcessError
+        If there's an error running the ffmpeg command.
+
+    Notes
+    -----
+    This function requires ffmpeg to be installed and accessible in the system PATH.
+    """
+    if not os.path.isdir(chunk_dir):
+        raise FileNotFoundError(f"The directory {chunk_dir} does not exist.")
+
+    chunk_files: List[str] = [f for f in os.listdir(chunk_dir) if f.startswith("chunk_") and f.endswith(".mp3")]
+    chunk_files.sort()  # Ensure files are processed in order
+
+    data: List[Dict[str, Any]] = []
+
+    for chunk_file in chunk_files:
+        chunk_number: int = int(chunk_file.split("_")[1].split(".")[0])
+        file_path: str = os.path.join(chunk_dir, chunk_file)
+
+        # Run ffprobe command to get file information
+        cmd: List[str] = [
+            "ffprobe",
+            "-v", "quiet",
+            "-print_format", "json",
+            "-show_format",
+            "-show_streams",
+            file_path
+        ]
+
+        try:
+            result: subprocess.CompletedProcess = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            file_info: Dict[str, Any] = json.loads(result.stdout)
+
+            # Extract relevant information
+            audio_stream: Dict[str, Any] = next(s for s in file_info["streams"] if s["codec_type"] == "audio")
+            format_info: Dict[str, Any] = file_info["format"]
+
+            data.append({
+                "chunk_number": chunk_number,
+                "duration": float(format_info["duration"]),
+                "bit_rate": int(format_info["bit_rate"]),
+                "sample_rate": int(audio_stream["sample_rate"]),
+                "channels": int(audio_stream["channels"])
+            })
+        except subprocess.CalledProcessError as e:
+            print(f"Error processing file {chunk_file}: {e}")
+        except (KeyError, json.JSONDecodeError) as e:
+            print(f"Error parsing ffprobe output for file {chunk_file}: {e}")
+
+    # Create DataFrame from the collected data
+    df: pd.DataFrame = pd.DataFrame(data)
+    return df

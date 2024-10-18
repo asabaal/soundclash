@@ -23,7 +23,5 @@ dependencies = [
 "Homepage" = "https://github.com/asabaal/soundclash"
 "Bug Tracker" = "https://github.com/asabaal/soundclash/issues"
 
-[
-tool.setuptools.dynamic
-]
+[tool.setuptools.dynamic]
 version = {file = "VERSION"}
