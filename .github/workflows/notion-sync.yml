@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Notion GitHub Issues Automation
-        uses: asabaal/Notion-GitHub-Issues-Automation@latest
+        uses: asabaal/Notion-GitHub-Issues-Automation@1.0.0
         with:
           repo: ${{ github.repository }}
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
