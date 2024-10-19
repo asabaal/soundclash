@@ -203,3 +203,71 @@ def analyze_audio_chunks(chunk_dir: str) -> pd.DataFrame:
     # Create DataFrame from the collected data
     df: pd.DataFrame = pd.DataFrame(data)
     return df
+
+# Convert "Track Length" to seconds
+def convert_to_seconds(time_str: str) -> float:
+    minutes, seconds = map(int, time_str.split(':'))
+    return minutes * 60 + seconds
+
+
+def generate_split_commands_multi_file(input_files: List[str], silences: List[List[Tuple[float, float]]], output_dir: str, known_durations: List[float]) -> List[str]:
+    """
+    Generate ffmpeg commands to split multiple audio files based on known song durations and detected silences.
+
+    Parameters
+    ----------
+    input_files : List[str]
+        A list of paths to the input audio files, in the correct order.
+    silences : List[List[Tuple[float, float]]]
+        A list of silence lists, each corresponding to an input file.
+        Each silence is represented as a tuple of (start_time, end_time).
+    output_dir : str
+        The directory where the split audio files will be saved.
+    known_durations : List[float]
+        A list of known song durations in seconds.
+
+    Returns
+    -------
+    List[str]
+        A list of ffmpeg commands to split the audio files.
+    """
+    commands: List[str] = []
+    chunk_counter: int = 0
+    current_file_index: int = 0
+    current_file_position: float = 0
+    remaining_duration: float = 0
+
+    for i, duration in enumerate(known_durations):
+        print(i)
+        remaining_duration = duration
+
+        while remaining_duration > 0 and current_file_index < len(input_files):
+            current_file = input_files[current_file_index]
+            file_duration = get_file_duration(current_file)
+            file_silences = silences[current_file_index]
+
+            chunk_start = current_file_position
+            chunk_end = min(file_duration, chunk_start + remaining_duration)
+
+            # Adjust chunk_end if it crosses a silence
+            for silence_start, silence_end in file_silences:
+                if silence_start <= chunk_end < silence_end:
+                    chunk_end = silence_start
+                    break
+
+            output_file = os.path.join(output_dir, f"chunk_{chunk_counter:03d}.mp3")
+            command = f'ffmpeg -i "{current_file}" -ss {chunk_start:.3f} -to {chunk_end:.3f} -c copy "{output_file}"'
+            commands.append(command)
+
+            chunk_duration = chunk_end - chunk_start
+            remaining_duration -= chunk_duration
+            current_file_position += chunk_duration
+
+            # Move to next file if we've reached the end of the current file
+            if current_file_position >= file_duration:
+                current_file_index += 1
+                current_file_position = 0
+
+        chunk_counter += 1
+
+    return commands
