@@ -2,6 +2,7 @@ import os
 import subprocess
 import pandas as pd
 import json
+from collections import OrderedDict
 from typing import List, Dict, Any, Tuple
 
 def detect_silences(input_file: str, silence_thresh: float = -30, min_silence_len: float = 1) -> List[Tuple[float, float]]:
@@ -210,17 +211,16 @@ def convert_to_seconds(time_str: str) -> float:
     return minutes * 60 + seconds
 
 
-def generate_split_commands_multi_file(input_files: List[str], silences: List[List[Tuple[float, float]]], output_dir: str, known_durations: List[float]) -> List[str]:
+def generate_split_commands_multi_file(silences: OrderedDict[str, List[Tuple[float, float]]], output_dir: str, known_durations: List[float]) -> List[str]:
     """
     Generate ffmpeg commands to split multiple audio files based on known song durations and detected silences.
 
     Parameters
     ----------
-    input_files : List[str]
-        A list of paths to the input audio files, in the correct order.
-    silences : List[List[Tuple[float, float]]]
-        A list of silence lists, each corresponding to an input file.
+    silences : OrderedDict[str, List[Tuple[float, float]]]
+        An OrderedDict where keys are input file paths and values are lists of silence tuples.
         Each silence is represented as a tuple of (start_time, end_time).
+        The order of the files in the OrderedDict is important.
     output_dir : str
         The directory where the split audio files will be saved.
     known_durations : List[float]
@@ -236,15 +236,15 @@ def generate_split_commands_multi_file(input_files: List[str], silences: List[Li
     current_file_index: int = 0
     current_file_position: float = 0
     remaining_duration: float = 0
+    input_files = list(silences.keys())
 
-    for i, duration in enumerate(known_durations):
-        print(i)
+    for duration in known_durations:
         remaining_duration = duration
 
         while remaining_duration > 0 and current_file_index < len(input_files):
             current_file = input_files[current_file_index]
             file_duration = get_file_duration(current_file)
-            file_silences = silences[current_file_index]
+            file_silences = silences[current_file]
 
             chunk_start = current_file_position
             chunk_end = min(file_duration, chunk_start + remaining_duration)
