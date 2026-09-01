@@ -150,7 +150,7 @@ class TestGenerateSplitCommands:
     """
 
     @pytest.fixture
-    def mock_get_file_duration(self: "TestGenerateSplitCommands") -> MagicMock:
+    def mock_get_file_duration(self) -> MagicMock:
         """
         Fixture to mock get_file_duration for testing.
 
@@ -159,11 +159,11 @@ class TestGenerateSplitCommands:
         MagicMock
             A mock object for get_file_duration.
         """
-        with patch('your_module.get_file_duration') as mock:
-            mock.return_value = 180000  # 3 minutes in milliseconds
+        with patch('soundclash.preprocessing.get_file_duration') as mock:
+            mock.return_value = 180000.0  # 3 minutes in milliseconds
             yield mock
 
-    def test_generate_split_commands(self: "TestGenerateSplitCommands") -> None:
+    def test_generate_split_commands(self, mock_get_file_duration: MagicMock) -> None:
         """
         Test the generate_split_commands function.
 
@@ -181,7 +181,7 @@ class TestGenerateSplitCommands:
         expected: List[str] = [
             'ffmpeg -i "input.mp3" -ss 0.000 -to 30.000 -c copy "/output/dir/chunk_000.mp3"',
             'ffmpeg -i "input.mp3" -ss 35.000 -to 90.000 -c copy "/output/dir/chunk_001.mp3"',
-            'ffmpeg -i "input.mp3" -ss 95.000 -to 180000.000 -c copy "/output/dir/chunk_002.mp3"'
+            'ffmpeg -i "input.mp3" -ss 95.000 -to 180.000 -c copy "/output/dir/chunk_002.mp3"'
         ]
         assert result == expected
 
@@ -199,7 +199,7 @@ class TestAnalyzeAudioChunks:
     """
 
     @pytest.fixture
-    def mock_os_listdir(self: "TestAnalyzeAudioChunks") -> MagicMock:
+    def mock_os_listdir(self) -> MagicMock:
         """
         Fixture to mock os.listdir for testing.
 
@@ -213,7 +213,7 @@ class TestAnalyzeAudioChunks:
             yield mock
 
     @pytest.fixture
-    def mock_subprocess_run(self: "TestAnalyzeAudioChunks") -> MagicMock:
+    def mock_subprocess_run(self) -> MagicMock:
         """
         Fixture to mock subprocess.run for testing.
 
@@ -228,7 +228,21 @@ class TestAnalyzeAudioChunks:
             mock_run.return_value = mock_result
             yield mock_run
 
-    def test_analyze_audio_chunks(self: "TestAnalyzeAudioChunks") -> None:
+    @pytest.fixture
+    def mock_os_path_isdir(self) -> MagicMock:
+        """
+        Fixture to mock os.path.isdir for testing.
+
+        Returns
+        -------
+        MagicMock
+            A mock object for os.path.isdir.
+        """
+        with patch('os.path.isdir') as mock:
+            mock.return_value = True
+            yield mock
+
+    def test_analyze_audio_chunks(self, mock_os_listdir: MagicMock, mock_subprocess_run: MagicMock, mock_os_path_isdir: MagicMock) -> None:
         """
         Test the analyze_audio_chunks function.
 
@@ -238,6 +252,8 @@ class TestAnalyzeAudioChunks:
             Mocked os.listdir function.
         mock_subprocess_run : MagicMock
             Mocked subprocess.run function.
+        mock_os_path_isdir : MagicMock
+            Mocked os.path.isdir function.
 
         Returns
         -------
@@ -299,7 +315,7 @@ class TestGenerateSplitCommandsMultiFile:
     """
 
     @pytest.fixture
-    def mock_get_file_duration(self: "TestGenerateSplitCommandsMultiFile") -> MagicMock:
+    def mock_get_file_duration(self) -> MagicMock:
         """
         Fixture to mock get_file_duration for testing.
 
@@ -308,11 +324,11 @@ class TestGenerateSplitCommandsMultiFile:
         MagicMock
             A mock object for get_file_duration.
         """
-        with patch('your_module.get_file_duration') as mock:
-            mock.side_effect = [180000, 120000]  # 3 minutes, 2 minutes
+        with patch('soundclash.preprocessing.get_file_duration') as mock:
+            mock.side_effect = [180000.0, 120000.0]  # 3 minutes, 2 minutes
             yield mock
 
-    def test_generate_split_commands_multi_file(self: "TestGenerateSplitCommandsMultiFile") -> None:
+    def test_generate_split_commands_multi_file(self, mock_get_file_duration: MagicMock) -> None:
         """
         Test the generate_split_commands_multi_file function.
 
@@ -329,7 +345,7 @@ class TestGenerateSplitCommandsMultiFile:
             ("file1.mp3", [(30.0, 35.0), (90.0, 95.0)]),
             ("file2.mp3", [(50.0, 55.0)])
         ])
-        known_durations: List[float] = [60, 150, 70]
+        known_durations: List[float] = [60.0, 150.0, 70.0]
         result: List[str] = generate_split_commands_multi_file(silences, "/output/dir", known_durations)
         expected: List[str] = [
             'ffmpeg -i "file1.mp3" -ss 0.000 -to 30.000 -c copy "/output/dir/chunk_000.mp3"',
